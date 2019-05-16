@@ -1,3 +1,8 @@
+
+# Load R Packages ---------------------------------------------------------
+
+# These are all the packages we'll need to build our app
+# You'll need to install any of these that you don't yet have installed
 library(shiny)
 library(shinyjs)
 library(shinythemes)
@@ -12,8 +17,11 @@ options(scipen = 999)
 
 # Data Prep ---------------------------------------------------------------
 
+# Grab data from data.ct.gov API endpoint specific to this dataset
 DECD_data <- RSocrata::read.socrata("https://data.ct.gov/resource/a8k4-9euq.json")
 
+# Format some of the variable types to 'numeric', and 
+# correct spelling error in "East WIndsor" observations 
 DECD_data <- DECD_data %>% 
   dplyr::mutate_at(.vars = c("amount_leveraged", 
                              "grant_amount", 
@@ -26,10 +34,12 @@ DECD_data <- DECD_data %>%
                                       "East Windsor", 
                                       municipality))
 
+# Create empty variables for longitude & latitude
 DECD_data$longitude <- c(rep(NA, nrow(DECD_data)))
-
 DECD_data$latitude <- c(rep(NA, nrow(DECD_data)))
 
+# Fill the empty variables created above by parsing out the
+# list variable called "geocoded_location.coordinates
 for (i in 1:nrow(DECD_data)) { 
   
   DECD_data$longitude[i] <- ifelse(is.null(DECD_data$geocoded_location.coordinates[[i]]) == TRUE, 
@@ -42,6 +52,10 @@ for (i in 1:nrow(DECD_data)) {
   
 }
 
+# Filter only observations where the value for 'state' is "CT"
+# Select only desired variables
+# Group different variations of "Manufacturing Assistance Act" into
+# one general category
 DECD_data <- DECD_data %>% 
   dplyr::filter(state == "CT") %>%
   dplyr::select(amount_leveraged, 
@@ -72,6 +86,7 @@ sidebar <- shiny::div(id = "Sidebar",
                       shiny::sidebarPanel( 
     shiny::h1("CT DECD ANALYZER"), 
     hr(), 
+    # Create input selection for the 'fiscal_year'
     shinyWidgets::pickerInput(
       inputId = "MapYearSelection", 
       label = "Select a Year", 
@@ -81,6 +96,7 @@ sidebar <- shiny::div(id = "Sidebar",
       options = list(`actions-box` = TRUE), 
       multiple = T
     ), 
+    # Create input selection for 'funding_source'
     shinyWidgets::pickerInput(
       inputId = "MapFundingSourceSelection", 
       label = "Select a Funding Source", 
@@ -89,6 +105,7 @@ sidebar <- shiny::div(id = "Sidebar",
       options = list(`actions-box` = TRUE),
       multiple = TRUE
     ), 
+    # Create input selection for 'municipality'
     shinyWidgets::pickerInput(
       inputId = "CitySelection",
       label = "Select a City",
@@ -99,6 +116,7 @@ sidebar <- shiny::div(id = "Sidebar",
     ), 
     hr(), 
     br(), 
+    # Add text to the sidebar below the input selectors
     shiny::h5("This interactive dashboard displays data reported by the Connecticut Department of Economic and Community Development."), 
     shiny::h5("The DECD provides support for Connecticut business in a variety of ways, including grants and loans."), 
     shiny::h5("This dashboard shows the businesses in Connecticut that received assistance from the DECD in the last decade."), 
@@ -108,16 +126,20 @@ sidebar <- shiny::div(id = "Sidebar",
     hr(), 
     br(), 
     br(), 
-    shiny::h6("This dashboard was developed by Mike Thomas using the R programming language and the Shiny development framework."),
+    shiny::h6("This dashboard was developed by Mike Thomas using the R programming language and the Shiny development framework."), 
+    shiny::h6("This is an open project, and all of the app code can be found in the following Github repository:"), 
+    shiny::uiOutput("GithubLink"),
     width = 3
 )
 )
 
 # Construct the main dashboard
 maindash <- shiny::mainPanel( 
+  # Create a "toggle sidebar" button to show/hide the sidebar
   shiny::actionButton("toggleSidebar", "Toggle sidebar", icon = icon("list-alt")), 
   br(), 
   hr(), 
+  # Create the first "row" of the dashboard containing the Map and Chart
   shiny::fluidRow(
     shiny::tabsetPanel(
       shiny::tabPanel(
@@ -135,6 +157,7 @@ maindash <- shiny::mainPanel(
     )
   ), 
   hr(), 
+  # Create the second "row" of the dashboard containing the Table
   shiny::fluidRow(
     DT::dataTableOutput(
       outputId = "Table"
@@ -144,6 +167,7 @@ maindash <- shiny::mainPanel(
   
 # Piece the UI together
 ui <- shiny::fluidPage( 
+  # Format the dashboard theme/color
   theme = shinythemes::shinytheme(theme = "sandstone"), 
   shinyWidgets::setBackgroundColor(color = "lightgrey", 
                                    gradient = c("linear", 
@@ -153,7 +177,8 @@ ui <- shiny::fluidPage(
                                                  "right", 
                                                  "left")), 
   shinyjs::useShinyjs(), 
-  shiny::sidebarLayout(
+  shiny::sidebarLayout( 
+    # Add the pieces of the UI constructed earlier to the final "UI" object
     sidebarPanel = sidebar, 
     mainPanel = maindash
   )
@@ -176,6 +201,11 @@ server <- shiny::shinyServer(function(input, output, session) {
   # Create hyperlink to data.ct.gov DECD dataset
   output$DECDdataset <- shiny::renderUI({
     shiny::tagList(a("DECD Dataset", href = "https://data.ct.gov/Business/Department-of-Economic-and-Community-Development-D/xnw3-nytd"))
+  })
+  
+  # Create hyperlink to Github repo
+  output$GithubLink <- shiny::renderUI({
+    shiny::tagList(a("Github Repo", href = "https://github.com/thomasmj92/DECD_Analysis"))
   })
   
   # Create leaflet map
@@ -213,7 +243,6 @@ server <- shiny::shinyServer(function(input, output, session) {
 
   # Create data table
   output$Table <- DT::renderDataTable({
-
    DECD_data %>%
      dplyr::filter(fiscal_year %in% input$MapYearSelection) %>%
      dplyr::filter(funding_source %in% input$MapFundingSourceSelection) %>%
@@ -240,9 +269,8 @@ server <- shiny::shinyServer(function(input, output, session) {
                     Total_Amt,
                     Amt_Leveraged,
                     Status)
-
   }, rownames = FALSE)
- 
+  
 })
 
 
